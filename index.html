@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>松竹梅檢錄看板</title>
+<meta name="description" content="第27屆松竹梅全國游泳邀請賽 現場檢錄進度">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700&family=Noto+Sans+TC:wght@400;700;900&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="meet">第27屆松竹梅全國游泳邀請賽</p>
+    <p class="sub">115 年 11 月 21 日（六）・新竹市立香山游泳池・現場檢錄進度</p>
+  </header>
+  <section class="board" aria-live="polite"><div class="board-in" id="board"><span class="label">連線中…</span></div></section>
+  <div class="conn" id="conn"><i></i><span>連線中…</span></div>
+  <p class="foot">畫面會自動更新，不用重新整理。預計時間僅供參考，請以檢錄處廣播為準。</p>
+</div>
+<script src="data.js"></script>
+<script type="module">
+import { onValue, ref } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import { configured, db, statusRef, boardHtml } from "./common.js";
+const board = document.getElementById("board"), conn = document.getElementById("conn");
+if (!configured) {
+  board.innerHTML = '<span class="label">網站尚未設定 Firebase（config.js）</span>';
+  conn.hidden = true;
+} else {
+  onValue(statusRef, (snap) => { board.innerHTML = boardHtml(snap.val()); },
+    () => { board.innerHTML = '<span class="label">讀取失敗，請重新整理</span>'; });
+  onValue(ref(db, ".info/connected"), (s) => {
+    const on = s.val() === true;
+    conn.className = "conn " + (on ? "on" : "off");
+    conn.querySelector("span").textContent = on ? "即時連線中" : "連線中斷，恢復後會自動更新";
+  });
+}
+</script>
+</body>
+</html>

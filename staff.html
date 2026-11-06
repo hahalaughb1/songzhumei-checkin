@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>檢錄處控制台</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700&family=Noto+Sans+TC:wght@400;700;900&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap" id="wrap">
+  <header>
+    <p class="meet">檢錄處控制台</p>
+    <p class="sub">第27屆松竹梅全國游泳邀請賽・只有檢錄處工作人員使用</p>
+  </header>
+
+  <form class="card" id="login" hidden>
+    <h2>請輸入檢錄處密碼</h2>
+    <div class="row"><input id="pw" type="password" autocomplete="current-password" placeholder="密碼" required><button class="primary" id="lg">登入</button></div>
+    <p class="msg" id="lgmsg"></p>
+  </form>
+
+  <div id="panel" hidden>
+    <div class="row" style="justify-content:space-between"><div class="conn" id="conn"><i></i><span></span></div><button id="out" type="button">登出</button></div>
+    <section class="board"><div class="board-in" id="board"></div></section>
+    <div class="card">
+      <h2>跳到指定組別</h2>
+      <div class="row"><select id="se" aria-label="項目"></select><select id="sh" aria-label="組別" style="flex:0 0 7.5em"></select></div>
+      <div class="row"><button id="go" type="button">跳到這組</button></div>
+    </div>
+    <div class="card">
+      <h2>公告</h2>
+      <div class="row"><input id="nt" maxlength="80" placeholder="例：第 12 項延後 10 分鐘（空白＝不顯示）"><button id="pn" type="button">發布</button></div>
+    </div>
+    <div class="card">
+      <h2>重設</h2>
+      <div class="row"><button id="rs" type="button">回到「檢錄尚未開始」</button><span class="msg" id="rsm"></span></div>
+    </div>
+  </div>
+  <p class="warn" id="nocfg" hidden>網站尚未設定 Firebase：請先填好 config.js。</p>
+</div>
+
+<div class="bar" id="bar" hidden><div class="in">
+  <p class="msg" id="msg"></p>
+  <div class="row"><button id="pv" type="button">◀ 上一組</button><button class="primary" id="nx" type="button">下一組 ▶</button></div>
+</div></div>
+
+<script src="data.js"></script>
+<script type="module">
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { onValue, ref, runTransaction, update } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import { app, db, configured, statusRef, boardHtml, HEATS, EVENTS, title, esc } from "./common.js";
+import { STAFF_EMAIL } from "./config.js";
+const $ = (id) => document.getElementById(id);
+
+if (!configured) { $("nocfg").hidden = false; throw new Error("no config"); }
+
+const auth = getAuth(app);
+let state = { cur: -1, note: "" }, unsub = [], built = false, busy = false;
+
+onAuthStateChanged(auth, (user) => {
+  const ok = !!user;
+  $("login").hidden = ok; $("panel").hidden = !ok; $("bar").hidden = !ok;
+  $("panel").style.display = ok ? "contents" : "none";
+  $("wrap").classList.toggle("staffpad", ok);
+  unsub.forEach((u) => u()); unsub = [];
+  if (!ok) { setTimeout(() => $("pw").focus(), 0); return; }
+  if (!built) build();
+  unsub.push(onValue(statusRef, (snap) => {
+    state = snap.val() || { cur: -1, note: "" };
+    $("board").innerHTML = boardHtml(state);
+    if (document.activeElement !== $("nt")) $("nt").value = state.note || "";
+    const cur = typeof state.cur === "number" ? state.cur : -1;
+    $("nx").textContent = cur < 0 ? "開始檢錄 ▶" : cur >= HEATS.length - 1 ? "全部完成 ▶" : "下一組 ▶";
+    $("pv").disabled = busy || cur < 0;
+    $("nx").disabled = busy || cur >= HEATS.length;
+    if (cur >= 0 && cur < HEATS.length && document.activeElement !== $("se") && document.activeElement !== $("sh")) {
+      $("se").value = HEATS[cur].ev; fillHeats(); $("sh").value = cur;
+    }
+  }));
+  unsub.push(onValue(ref(db, ".info/connected"), (s) => {
+    const on = s.val() === true;
+    $("conn").className = "conn " + (on ? "on" : "off");
+    $("conn").querySelector("span").textContent = on ? "已連線" : "連線中斷：按鈕會在恢復連線後送出";
+  }));
+});
+
+$("login").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("lg").disabled = true; $("lgmsg").className = "msg"; $("lgmsg").textContent = "登入中…";
+  try { await signInWithEmailAndPassword(auth, STAFF_EMAIL, $("pw").value); $("pw").value = ""; $("lgmsg").textContent = ""; }
+  catch (err) {
+    $("lgmsg").className = "msg err";
+    $("lgmsg").textContent = err.code === "auth/too-many-requests" ? "嘗試太多次，請過幾分鐘再試" : "密碼錯誤，請再試一次";
+  } finally { $("lg").disabled = false; }
+});
+
+function fillHeats() {
+  const n = +$("se").value;
+  $("sh").innerHTML = HEATS.map((h, i) => h.ev === n ? `<option value="${i}">第 ${h.heat}/${h.of} 組</option>` : "").join("");
+}
+function say(t, err) { $("msg").textContent = t; $("msg").className = "msg" + (err ? " err" : ""); }
+async function run(label, fn) {
+  if (busy) return;
+  busy = true; ["pv", "nx", "go", "pn", "rs"].forEach((id) => $(id).disabled = true);
+  try { await fn(); say(label + "：已更新，所有人的畫面會同步"); }
+  catch (e) { say("沒有更新成功（" + (e.code || e.message) + "），請再按一次", true); }
+  finally { busy = false; ["go", "pn", "rs"].forEach((id) => $(id).disabled = false); onStateButtons(); }
+}
+function onStateButtons() {
+  const cur = typeof state.cur === "number" ? state.cur : -1;
+  $("pv").disabled = cur < 0; $("nx").disabled = cur >= HEATS.length;
+}
+// 上一組／下一組用 transaction，兩台裝置同時按也不會跳錯
+const step = (d) => runTransaction(statusRef, (s) => {
+  s = s || { cur: -1, note: "" };
+  const c = typeof s.cur === "number" ? s.cur : -1;
+  s.cur = Math.max(-1, Math.min(HEATS.length, c + d));
+  s.updated = Date.now();
+  return s;
+});
+
+function build() {
+  built = true;
+  $("se").innerHTML = Object.keys(EVENTS).map((n) => `<option value="${n}">${n}. ${esc(title(n))}</option>`).join("");
+  fillHeats();
+  $("se").addEventListener("change", fillHeats);
+  $("nx").addEventListener("click", () => run("下一組", () => step(1)));
+  $("pv").addEventListener("click", () => run("上一組", () => step(-1)));
+  $("go").addEventListener("click", () => {
+    const i = +$("sh").value, h = HEATS[i];
+    run(`跳到第 ${h.ev} 項第 ${h.heat} 組`, () => update(statusRef, { cur: i, updated: Date.now() }));
+  });
+  $("pn").addEventListener("click", () => run("公告", () => update(statusRef, { note: $("nt").value.trim(), updated: Date.now() })));
+  let armed = false;
+  $("rs").addEventListener("click", () => {
+    if (!armed) { armed = true; $("rsm").textContent = "確定嗎？再按一次"; setTimeout(() => { armed = false; $("rsm").textContent = ""; }, 4000); return; }
+    armed = false; $("rsm").textContent = "";
+    run("重設", () => update(statusRef, { cur: -1, updated: Date.now() }));
+  });
+  $("out").addEventListener("click", () => signOut(auth));
+}
+</script>
+</body>
+</html>
