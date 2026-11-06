@@ -11,4 +11,4 @@ export const firebaseConfig = {
   appId: "1:1023371515353:web:e1cf1c53968efe892835c8"
 };
 
-export const STAFF_EMAIL = "";
+export const STAFF_EMAIL = "eric06302018@gmail.com";

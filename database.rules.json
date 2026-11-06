@@ -4,7 +4,7 @@
     ".write": false,
     "status": {
       ".read": true,
-      ".write": "auth != null && auth.token.email === 'STAFF_EMAIL_HERE'",
+      ".write": "auth != null && auth.token.email === 'eric06302018@gmail.com'",
       ".validate": "newData.hasChildren(['cur']) && newData.child('cur').isNumber() && newData.child('cur').val() >= -1 && newData.child('cur').val() <= 125",
       "cur": { ".validate": true },
       "note": { ".validate": "newData.isString() && newData.val().length <= 80" },
