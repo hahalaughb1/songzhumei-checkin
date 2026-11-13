@@ -44,7 +44,7 @@ export function boardHtml(st) {
   const next = (ix, labels) => {
     const parts = ix.filter((i) => i >= 0 && i < HEATS.length).map((i, k) => {
       const h = HEATS[i];
-      return `<div><span class="label">${labels[k]}</span><b>${h.ev}. ${esc(title(h.ev))}</b><span>第 ${h.heat}/${h.of} 組・預計 ${h.est}</span></div>`;
+      return `<div><span class="label">${labels[k]}</span><b>${h.ev}. ${esc(title(h.ev))}</b><span>第 ${h.heat}/${h.of} 組</span></div>`;
     });
     return parts.length ? `<div class="next">${parts.join("")}</div>` : "";
   };
@@ -57,6 +57,6 @@ export function boardHtml(st) {
   const h = HEATS[cur];
   return `<span class="live"><i></i>現在檢錄</span>` +
     `<div class="now-row"><div class="evno">${h.ev}<small>項</small></div><div class="now-title"><h2>${esc(title(h.ev))}</h2>` +
-    `<div class="heat">第 ${h.heat} 組 <span>/ 共 ${h.of} 組・預計 ${h.est}</span></div></div></div>` +
+    `<div class="heat">第 ${h.heat} 組 <span>/ 共 ${h.of} 組</span></div></div></div>` +
     lanesHtml(h) + next([cur + 1, cur + 2], ["下一組・請準備", "再下一組"]) + note + stamp;
 }
